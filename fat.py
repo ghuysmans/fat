@@ -84,6 +84,7 @@ class File(Data):
         return self._fat.data(cluster) + ofs
 
 DIRECTORY = 0x10
+LFN = 0x0f
 
 class Entry(object):
     def __init__(self, fat, data, ofs):
@@ -91,8 +92,9 @@ class Entry(object):
         self._ofs = ofs
         self._data = data
         self.deleted = False
+        self.attributes = data.read_s(ofs + 0xb, "B")[0]
         raw = data.read(ofs, 11)
-        if raw[0] == 0:
+        if raw[0] == 0 or self.attributes & LFN:
             self.name = "" #FIXME move this into Directory and return None
         elif raw[0] == ord('.'):
             self.name = raw.decode("ascii").strip()
@@ -106,7 +108,6 @@ class Entry(object):
             self.name = raw[start:8].decode("ascii").strip()
             if raw[8:] != b"   ":
                 self.name += "." + raw[8:].decode("ascii").strip()
-        self.attributes = data.read_s(ofs + 0xb, "B")[0]
         self.first = data.read_s(ofs + 0x1a, "<H")[0]
         self.size = data.read_s(ofs + 0x1c, "<H")[0]
     def open(self):
