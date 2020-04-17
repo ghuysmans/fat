@@ -1,6 +1,7 @@
 import sys
 import struct
 import os
+from abc import abstractmethod
 
 class BPB(object):
     def __init__(self, partition):
@@ -24,16 +25,34 @@ class FAT16(object):
         self._start = (bpb.reserved_sectors + i * bpb.sectors_per_fat) * bpb.bytes_per_sector
         root = (bpb.reserved_sectors + bpb.fats * bpb.sectors_per_fat) * bpb.bytes_per_sector
         root_size = bpb.root_entries * 32
-        self._data = root + root_size
+        self._data_start = root + root_size
         self.cluster_size = bpb.sectors_per_cluster * bpb.bytes_per_sector
         self.root = Directory(self, Contiguous(bpb.p, root, root_size))
     def data(self, cluster):
         if cluster >= 2 and cluster < 0xFFEF:
-            return self._data + (cluster - 2) * self.cluster_size
+            return self._data_start + (cluster - 2) * self.cluster_size
     def next(self, cluster):
         return self.p.read_s(self._start + cluster * 2, "<H")[0]
 
-class File(object):
+class Data(object):
+    def __init__(self, data, size):
+        self._data = data
+        self.size = size
+    @abstractmethod
+    def _translate(self, ofs, len):
+        pass
+    def _check_access(self, ofs, len):
+        if ofs < 0:
+            raise TypeError("negative offset")
+        if len < 0:
+            raise TypeError("negative length")
+    def read(self, ofs, len):
+        self._check_access(ofs, len)
+        return self._data.read(self._translate(ofs, len), len)
+    def read_s(self, ofs, fmt):
+        return struct.unpack(fmt, self.read(ofs, struct.calcsize(fmt)))
+
+class File(Data):
     def __init__(self, fat, first, size=None):
         l = [first]
         while True:
@@ -47,25 +66,20 @@ class File(object):
         self._fat = fat
         self._clusters = l
         if size == None:
-            self.size = len(l) * self._fat.cluster_size
-        else:
-            self.size = size
-    def read(self, ofs, len):
-        if ofs < 0:
-            raise TypeError("negative offset")
-        elif len < 0:
-            raise TypeError("negative length")
-        elif ofs + len >= self.size:
-            raise IOError("out of bounds read")
+            size = len(l) * self._fat.cluster_size
+        Data.__init__(self, fat.p, size)
+    def _translate(self, ofs, len):
+        if ofs + len >= self.size:
+            raise IOError("out of bounds access")
         cluster = self._clusters[ofs // self._fat.cluster_size]
         ofs &= self._fat.cluster_size - 1
-        return self._fat.p.read(self._fat.data(cluster) + ofs, len)
-    def read_s(self, ofs, fmt):
-        return struct.unpack(fmt, self.read(ofs, struct.calcsize(fmt)))
+        return self._fat.data(cluster) + ofs
 
 class Entry(object):
     def __init__(self, fat, data, ofs):
         self._fat = fat
+        self._ofs = ofs
+        self._data = data
         self.deleted = False
         raw = data.read(ofs, 11)
         if raw[0] == '\x00':
@@ -92,22 +106,14 @@ class Entry(object):
         else:
             return File(self._fat, self.first)
 
-#FIXME define a Data interface
-class Contiguous(object):
+class Contiguous(Data):
     def __init__(self, data, ofs, size):
-        self._data = data
+        Data.__init__(self, data, size)
         self._ofs = ofs
-        self.size = size
-    def read(self, ofs, len):
-        if ofs < 0:
-            raise TypeError("negative offset")
-        if len < 0:
-            raise TypeError("negative length")
-        elif len >= self.size:
+    def _translate(self, ofs, len):
+        if ofs + len >= self.size: #that was a bug
             raise IOError("out of bounds read")
-        return self._data.read(self._ofs + ofs, len)
-    def read_s(self, ofs, fmt):
-        return struct.unpack(fmt, self.read(ofs, struct.calcsize(fmt)))
+        return self._ofs + ofs
 
 class Image(object):
     def __init__(self, fn):
