@@ -155,6 +155,10 @@ class Directory(object):
         self._fat = fat
         self._data = data
         self._count = data.size // 32
+    def get(self, name):
+        for e in self:
+            if e.name == name:
+                return e
     #TODO implement an iterator for LFN?
     def __len__(self):
         return self._count
@@ -164,13 +168,9 @@ class Directory(object):
         else:
             raise IndexError("invalid directory entry index")
 
-
-with Image(sys.argv[1], write=True) as f:
-    part = Contiguous(f, 0, len(f))
-    bpb = BPB(part)
-    fat = FAT16(bpb, 0) #the first one
+def do_dir(dir):
     print("deleted", "first", "addr", "name", sep="\t")
-    for e in fat.root:
+    for e in dir:
         if len(e.name) and e.attributes != 0x0f:
             data = fat.data(e.first)
             if data != None:
@@ -195,3 +195,11 @@ with Image(sys.argv[1], write=True) as f:
                     if len(e.name):
                         print(e.name)
             """
+
+
+with Image(sys.argv[1], write=True) as f:
+    part = Contiguous(f, 0, len(f))
+    bpb = BPB(part)
+    fat = FAT16(bpb, 0) #the first one
+    #do_dir(fat.root)
+    do_dir(fat.root.get("D").open())
