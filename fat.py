@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 import struct
 import os
@@ -89,18 +90,20 @@ class Entry(object):
         self._data = data
         self.deleted = False
         raw = data.read(ofs, 11)
-        if raw[0] == '\x00':
+        if raw[0] == 0:
             self.name = "" #FIXME move this into Directory and return None
-        elif raw[0] == '.':
-            self.name = raw.strip()
+        elif raw[0] == ord('.'):
+            self.name = raw.decode("ascii").strip()
         else:
-            if raw[0] == '\x05':
-                raw[0] = '\xe5'
-            elif raw[0] == '\xe5':
-                raw[0] = '?'
+            if raw[0] == 0x05:
+                raw = "\xe5" + raw[1:].decode("ascii")
+            elif raw[0] == 0xe5:
+                raw = "?" + raw[1:].decode("ascii")
                 self.deleted = True
+            else:
+                raw = raw.decode("ascii")
             self.name = raw[:8].strip()
-            if raw[8:] != "   ":
+            if raw[8:] != b"   ":
                 self.name += "." + raw[8:].strip()
         self.attributes = data.read_s(ofs + 0xb, "B")[0]
         self.first = data.read_s(ofs + 0x1a, "<H")[0]
