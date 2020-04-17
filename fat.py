@@ -3,6 +3,7 @@ import sys
 import struct
 import os
 from abc import abstractmethod
+from collections import deque
 
 class BPB(object):
     def __init__(self, partition):
@@ -196,6 +197,27 @@ def do_dir(dir):
                         print(e.name)
             """
 
+def do_graph(cluster, folder):
+    visited = set()
+    queue = deque([(cluster, folder)])
+    print("digraph {")
+    while len(queue):
+        cluster, dir = queue.popleft()
+        if cluster in visited:
+            #avoid cycles
+            continue
+        for e in dir:
+            if e.name == "":
+                pass
+            elif e.name[0] == ".":
+                #avoid clubber
+                pass
+            elif e.attributes != LFN and e.attributes & DIRECTORY:
+                print(cluster, "->", e.first, '[label="{}"];'.format(e.name))
+                queue.append((e.first, e.open()))
+        visited.add(cluster)
+    print("}")
+
 def do_hack(root):
     d = root.get("D")
     df = d.open()
@@ -210,4 +232,4 @@ with Image(sys.argv[1], write=True) as f:
     part = Contiguous(f, 0, len(f))
     bpb = BPB(part)
     fat = FAT16(bpb, 0) #the first one
-    do_hack(fat.root)
+    do_graph(0, fat.root)
