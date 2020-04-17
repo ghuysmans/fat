@@ -31,8 +31,10 @@ class FAT16(object):
     def data(self, cluster):
         if cluster >= 2 and cluster < 0xFFEF:
             return self._data_start + (cluster - 2) * self.cluster_size
-    def next(self, cluster):
+    def get_next(self, cluster):
         return self.p.read_s(self._start + cluster * 2, "<H")[0]
+    def set_next(self, cluster, next):
+        return self.p.write_s(self._start + cluster * 2, "<H", next)
 
 class Data(object):
     def __init__(self, data, size):
@@ -51,12 +53,17 @@ class Data(object):
         return self._data.read(self._translate(ofs, len), len)
     def read_s(self, ofs, fmt):
         return struct.unpack(fmt, self.read(ofs, struct.calcsize(fmt)))
+    def write(self, ofs, data):
+        self._check_access(ofs, len(data))
+        return self._data.write(self._translate(ofs, len(data)), data)
+    def write_s(self, ofs, fmt, *data):
+        return self.write(ofs, struct.pack(fmt, *data))
 
 class File(Data):
     def __init__(self, fat, first, size=None):
         l = [first]
         while True:
-            next = fat.next(l[-1])
+            next = fat.get_next(l[-1])
             if next >= 0xFFF8:
                 break #last
             elif next >= 2 and next < 0xFFEF:
@@ -105,6 +112,9 @@ class Entry(object):
             raise TypeError("can't open an LFN entry")
         else:
             return File(self._fat, self.first)
+    def set_first(self, cluster):
+        self.first = cluster
+        self._data.write_s(self._ofs + 0x1a, "<H", cluster)
 
 class Contiguous(Data):
     def __init__(self, data, ofs, size):
@@ -116,11 +126,18 @@ class Contiguous(Data):
         return self._ofs + ofs
 
 class Image(object):
-    def __init__(self, fn):
-        self._f = open(fn, "rb")
+    def __init__(self, fn, write=False):
+        if write:
+            mode = "r+b"
+        else:
+            mode = "rb"
+        self._f = open(fn, mode)
     def read(self, ofs, len):
         self._f.seek(ofs)
         return self._f.read(len)
+    def write(self, ofs, data):
+        self._f.seek(ofs)
+        return self._f.write(data)
     def __len__(self):
         return os.fstat(self._f.fileno()).st_size
     def __enter__(self):
@@ -143,12 +160,27 @@ class Directory(object):
             raise IndexError("invalid directory entry index")
 
 
-with Image(sys.argv[1]) as f:
+with Image(sys.argv[1], write=True) as f:
     part = Contiguous(f, 0, len(f))
     bpb = BPB(part)
     fat = FAT16(bpb, 0) #the first one
     for e in fat.root:
         if len(e.name) and e.attributes != 0x0f:
             print(e.first, hex(fat.data(e.first)), e.name)
+            if e.name == "ROUTES.BAT":
+                e.open().write(0, "echo Hello, World !\r\n")
             #print(e.open().read(0, 100))
-#TODO nested volumes :D
+            """
+            if e.name == "BIS":
+                e.set_first(18)
+            """
+            """
+            #nested volumes :D
+            if e.name == "MINI.IMG":
+                p2 = e.open()
+                b2 = BPB(p2)
+                f2 = FAT16(b2, 0)
+                for e in f2.root:
+                    if len(e.name):
+                        print(e.name)
+            """
