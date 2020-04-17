@@ -202,4 +202,12 @@ with Image(sys.argv[1], write=True) as f:
     bpb = BPB(part)
     fat = FAT16(bpb, 0) #the first one
     #do_dir(fat.root)
-    do_dir(fat.root.get("D").open())
+    d = fat.root.get("D")
+    df = d.open()
+    d2 = fat.root.get("D2")
+    d2f = d2.open()
+    do_dir(df)
+    do_dir(d2f)
+    if len(sys.argv) == 2 and sys.argv[1] == "--hack":
+        df.get("AUTRE").set_first(d2.first)
+        d2f.get("AUTRE").set_first(d.first)
