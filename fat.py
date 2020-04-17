@@ -83,6 +83,8 @@ class File(Data):
         ofs &= self._fat.cluster_size - 1
         return self._fat.data(cluster) + ofs
 
+DIRECTORY = 0x10
+
 class Entry(object):
     def __init__(self, fat, data, ofs):
         self._fat = fat
@@ -108,7 +110,7 @@ class Entry(object):
         self.first = data.read_s(ofs + 0x1a, "<H")[0]
         self.size = data.read_s(ofs + 0x1c, "<H")[0]
     def open(self):
-        if self.attributes & 0x10:
+        if self.attributes & DIRECTORY:
             return Directory(self._fat, File(self._fat, self.first))
         elif self.attributes == 0x0f:
             raise TypeError("can't open an LFN entry")
@@ -173,7 +175,8 @@ with Image(sys.argv[1], write=True) as f:
             if data != None:
                 data = hex(data)
             d = "D" if e.deleted else ""
-            print(d, e.first, data, e.name, sep="\t")
+            suffix = "/" if e.attributes & DIRECTORY else ""
+            print(d, e.first, data, e.name + suffix, sep="\t")
             if e.name == "ROUTES.BAT":
                 e.open().write(0, "echo Hello, World !\r\n")
             #print(e.open().read(0, 100))
