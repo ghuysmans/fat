@@ -95,16 +95,15 @@ class Entry(object):
         elif raw[0] == ord('.'):
             self.name = raw.decode("ascii").strip()
         else:
+            start = 0
             if raw[0] == 0x05:
-                raw = "\xe5" + raw[1:].decode("ascii")
+                raw = b"\xe5" + raw[1:]
             elif raw[0] == 0xe5:
-                raw = "?" + raw[1:].decode("ascii")
+                start = 1
                 self.deleted = True
-            else:
-                raw = raw.decode("ascii")
-            self.name = raw[:8].strip()
+            self.name = raw[start:8].decode("ascii").strip()
             if raw[8:] != b"   ":
-                self.name += "." + raw[8:].strip()
+                self.name += "." + raw[8:].decode("ascii").strip()
         self.attributes = data.read_s(ofs + 0xb, "B")[0]
         self.first = data.read_s(ofs + 0x1a, "<H")[0]
         self.size = data.read_s(ofs + 0x1c, "<H")[0]
@@ -167,9 +166,14 @@ with Image(sys.argv[1], write=True) as f:
     part = Contiguous(f, 0, len(f))
     bpb = BPB(part)
     fat = FAT16(bpb, 0) #the first one
+    print("deleted", "first", "addr", "name", sep="\t")
     for e in fat.root:
         if len(e.name) and e.attributes != 0x0f:
-            print(e.first, hex(fat.data(e.first)), e.name)
+            data = fat.data(e.first)
+            if data != None:
+                data = hex(data)
+            d = "D" if e.deleted else ""
+            print(d, e.first, data, e.name, sep="\t")
             if e.name == "ROUTES.BAT":
                 e.open().write(0, "echo Hello, World !\r\n")
             #print(e.open().read(0, 100))
