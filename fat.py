@@ -113,7 +113,7 @@ class Entry(object):
     def open(self):
         if self.attributes & DIRECTORY:
             return Directory(self._fat, File(self._fat, self.first))
-        elif self.attributes == 0x0f:
+        elif self.attributes == LFN:
             raise TypeError("can't open an LFN entry")
         else:
             return File(self._fat, self.first)
@@ -171,7 +171,7 @@ class Directory(object):
 def do_dir(dir):
     print("deleted", "first", "addr", "name", sep="\t")
     for e in dir:
-        if len(e.name) and e.attributes != 0x0f:
+        if len(e.name) and e.attributes != LFN:
             data = fat.data(e.first)
             if data != None:
                 data = hex(data)
@@ -196,18 +196,18 @@ def do_dir(dir):
                         print(e.name)
             """
 
+def do_hack(root):
+    d = root.get("D")
+    df = d.open()
+    d2 = root.get("D2")
+    d2f = d2.open()
+    if len(sys.argv) == 2 and sys.argv[1] == "--write":
+        df.get("AUTRE").set_first(d2.first)
+        d2f.get("AUTRE").set_first(d.first)
+
 
 with Image(sys.argv[1], write=True) as f:
     part = Contiguous(f, 0, len(f))
     bpb = BPB(part)
     fat = FAT16(bpb, 0) #the first one
-    #do_dir(fat.root)
-    d = fat.root.get("D")
-    df = d.open()
-    d2 = fat.root.get("D2")
-    d2f = d2.open()
-    do_dir(df)
-    do_dir(d2f)
-    if len(sys.argv) == 2 and sys.argv[1] == "--hack":
-        df.get("AUTRE").set_first(d2.first)
-        d2f.get("AUTRE").set_first(d.first)
+    do_hack(fat.root)
